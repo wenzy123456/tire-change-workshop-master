@@ -2,11 +2,9 @@ package main
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/surmus/tire-change-workshop/internal/london"
+	log "github.com/surmus/tire-change-workshop/internal/london"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"github.com/urfave/cli/v2"
 	"net/http"
 	"os"
 	"time"
