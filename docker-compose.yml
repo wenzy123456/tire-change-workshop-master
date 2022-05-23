@@ -1,0 +1,20 @@
+version: '3.7'
+
+services:
+  london:
+    build:
+      dockerfile: Dockerfile
+      args:
+        CITY_NAME: london
+      context: .
+    ports:
+      - "9003:80"
+
+  manchester:
+    build:
+      dockerfile: Dockerfile
+      args:
+        CITY_NAME: manchester
+      context: .
+    ports:
+      - "9004:80"

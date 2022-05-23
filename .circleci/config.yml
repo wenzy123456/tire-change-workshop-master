@@ -1,0 +1,110 @@
+version: 2 # use CircleCI 2.0
+
+jobs:
+  build: # runs not using Workflows must have a `build` job as entry point
+    machine: true
+
+    environment: # environment variables for the build itself
+      BUILD_DIR: ./build # path to where build results will be moved
+
+    steps: # steps that comprise the `build` job
+      - checkout # check out source code to working directory
+      - run: mkdir -p BUILD_DIR # create the build results directory
+
+      # build image and save test results into specified directory
+      - run:
+          name: Build image and extract test results and server binaries
+          command: docker build -t manchester-tire-workshop --build-arg CITY_NAME=manchester .
+      - run:
+          # The build stage should use previous build's cache
+          name: Build image and extract test results and server binaries
+          command: docker build -t london-tire-workshop --build-arg CITY_NAME=london .
+      - run:
+          name: "Extract build test results from container"
+          when: always
+          command: |
+            docker create --name buildercontainer $(docker images --filter "label=builder=true" -q | xargs) \
+            && docker cp buildercontainer:/app/build ${BUILD_DIR} \
+            && docker rm buildercontainer
+      - run:
+          name: "Save docker images as tar file"
+          command: |
+            docker save manchester-tire-workshop -o ${BUILD_DIR}/manchester-tire-workshop.tar \
+            && docker save london-tire-workshop -o ${BUILD_DIR}/london-tire-workshop.tar
+
+      # Send coverage test reports to codecov
+      - run: bash <(curl -s https://codecov.io/bash) -s ${BUILD_DIR}
+      - store_test_results: # upload test results for display in Test Summary
+          when: always
+          path: ./build/go-test-report.xml
+      - persist_to_workspace:
+          # Must be an absolute path, or relative path from working_directory. This is a directory on the container which is
+          # taken to be the root directory of the workspace.
+          root: .
+          # Must be relative path from root
+          paths:
+            - build
+
+  publish-github-release:
+    docker: # run the steps with Docker
+      - image: cibuilds/github:0.10
+    steps:
+      - checkout
+      - attach_workspace:
+          # Must be absolute path or relative path from working_directory
+          at: ./
+
+      - run:
+          name: "Build release archive"
+          command: |
+            cd build && tar -zcvf release.tar.gz linux64 win64 && cd ..
+      - run:
+          name: "Publish Release on GitHub"
+          command: |
+            ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -recreate ${CIRCLE_TAG} ./build/release.tar.gz
+
+  publish-to-docker-hub:
+    docker: # run the steps with Docker
+      # CircleCI Go images available at: https://hub.docker.com/r/circleci/golang/
+      - image: circleci/golang:1.12
+    steps:
+      - checkout
+      - setup_remote_docker
+      - attach_workspace: # import artifacts from build step
+          at: ./
+      - run: docker load -i ./build/manchester-tire-workshop.tar
+      - run: docker load -i ./build/london-tire-workshop.tar
+      - run: docker login --username ${DOCKER_REPO_USER} --password ${DOCKER_REPO_PASSWD}
+      - run:
+          name: "Tag and push Docker images to registry"
+          command: |
+            export VERSION=${CIRCLE_TAG/v/} \
+            && docker tag manchester-tire-workshop surmus/manchester-tire-workshop:${VERSION} \
+            && docker push surmus/manchester-tire-workshop:${VERSION} \
+            && docker tag london-tire-workshop surmus/london-tire-workshop:${VERSION} \
+            && docker push surmus/london-tire-workshop:${VERSION}
+
+workflows:
+  version: 2
+  main:
+    jobs:
+      - build:
+          filters:
+            tags:
+              only: /^v.*/
+      - publish-github-release:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - publish-to-docker-hub:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/

@@ -1,0 +1,15 @@
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+/out/
+
+coverage.out
+tmp.out
+
+/api/*
+/build
+
+./london-server*
+./manchester-server*
